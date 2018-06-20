@@ -1,77 +1,104 @@
-function [ name, len, rad, parent, tips ] = importDataC (datafile)
-B = table2array(importfile23(datafile));
-A = double(B);
-numOfCol = size(A);
-numOfCol = numOfCol(2);
-    name   = (A(1:length(A),1));
-    len = (A(1:length(A),3));
-    rad = (A(1:length(A),4));
-    parent = (A(1:length(A),6));
-    num_child = (A(1:length(A),7));
-childArr = linspace(8,numOfCol, numOfCol-7);
-maxNumOfChildren = length(childArr);
-nchild = [];
-numOfVessels = length(name);
-vesselChildren = zeros(numOfVessels, maxNumOfChildren+1);
-vesselName = [];
-tips = [];
-for k = 1:numOfVessels
-     nchild = [nchild, num_child(k,1)];
+function [name, len, rad, parent, tips, nchild, children] = importDataC (datafile)
+%importDataC: a function that extracts vessel data from Angicart C++ .tsv output files.
+%Reads in a .txt file containing Angicart data. Computes the number of tips downstream of each vessel.
+%Returns column vectors of name, length, radius, parent, tips.
+%
+%INPUT: datafile
+% A .txt file containing Angicart data
+%
+%OUTPUT: [name, len, rad, parent, tips]
+% Returns the name, length, radius, parent, tips of vessel, each of which
+% are column vectors.
+%
+%EX:
+% [name, len, rad, parent, tips, nchild, children] = importDataC (datafile)
+%	
+%Caroline Choi, last edited 4/2/18
+% ==========================================================================
+% Read in the .txt data file.
+dataPath = [datafile];
+[allDataStructure] = tdfread(dataPath, '\t');
+num_vessels = length(allDataStructure.name);
+num_cols = 10;
+
+%Create a 2D array, mat, which contains the data from the .txt file.
+mat = zeros(num_vessels, num_cols);
+for k=1:num_vessels
+    mat(k,1) = allDataStructure.name(k);
 end
-for j = 1:numOfVessels
-    thisName = name(j,1);
-    vesselName = [vesselName, thisName];
-    parent(j,1) = 0;
-     for j1 = 1:numOfVessels
-         if (j == j1)
-             continue
-         end
-        found = 0;
-        for k = 1:nchild(j1)
-            nmchild = A(j1, k + 7);
-            if (thisName == nmchild(1,1))
-                found = 1;
-                indexparent = j1;
-                break
+for k=1:num_vessels
+    mat(k,3) = allDataStructure.len(k);
+end
+for k=1:num_vessels
+    mat(k,4) = allDataStructure.rad1(k);
+end
+for k=1:num_vessels
+    mat(k,6) = allDataStructure.parent(k);
+end
+for k=1:num_vessels
+    mat(k,7) = allDataStructure.nchild(k);
+end
+for k=1:num_vessels
+    mat(k,8) = allDataStructure.child1(k);
+end
+for k=1:num_vessels
+    mat(k,9) = allDataStructure.child2(k);
+end
+for k=1:num_vessels
+    mat(k,10) = allDataStructure.child3(k);
+end
+% for k=1:num_vessels
+%     mat(k,11) = allDataStructure.child4(k);
+% end
+% for k=1:num_vessels
+%     mat(k,12) = allDataStructure.child5(k);
+% end
+% for k=1:num_vessels
+%     mat(k,13) = allDataStructure.child6(k);
+% end
+
+%Returns a column vector containing the number of tips downstream from each vessel in the
+%network.
+    function [tips] = findAllTips()
+        tips = [];
+        for x=1:num_vessels
+            count_tips = findTips(mat(x,1));
+            tips = [tips, count_tips];
+        end
+        tips = transpose(tips);
+    end
+
+%A recursive function that returns the number of tips downstream from one
+%vessel, denoted by its name.
+    function [count_tips] = findTips(top_name)
+        i = find(top_name==mat(:,1));
+        count_tips=0;
+        if (mat(i,7)<1)    %if has no children
+            count_tips=1;
+        else
+            num_children = allDataStructure.nchild(i);
+            for j=1:num_children
+                count_tips=count_tips+findTips(mat(find(name(:)==mat(i,j+7),1)));
             end
         end
-        if (found == 1)
-            break
-        end
     end
-    if (found == 1)
-        nfound = vesselChildren(indexparent, 1);
-        vesselChildren(indexparent, 1) = nfound + 1;
-        vesselChildren(indexparent, nfound + 2) = j;
-        parent(j,1) = indexparent;
-    end
+
+%Create column vectors name, length, radius, parent, nchild, tips data and a 2D array
+%of the children names.
+name = allDataStructure.name;
+len = allDataStructure.len;
+rad = allDataStructure.rad1;
+parent = allDataStructure.parent;
+nchild = allDataStructure.nchild;
+tips = findAllTips();
+temp = zeros(num_vessels, num_cols-7);
+for r=1:num_vessels
+    temp(r,1)=allDataStructure.child1(r);
+    temp(r,2)=allDataStructure.child2(r);
+    temp(r,3)=allDataStructure.child3(r);
+    %temp(r,4)=allDataStructure.child4(r);
+    %temp(r,5)=allDataStructure.child5(r);
+    %temp(r,6)=allDataStructure.child6(r);
 end
-k = 0;
-for m = 1:numOfVessels    % begin to find tips
-    if nchild(m) < 1
-        k = k + 1;
-        tips = [tips m];             % tips becomes an array of vessels that have no children
-    end
-end
-p = size(tips);
-p = p(2);
-for m = 1:numOfVessels
-    c = 1;
-    for n = 1:p
-        x = tips(n);
-        while (parent(x) > 0)
-            if parent(x) == m
-                c = c + 1;
-                break
-            end
-            x = parent(x);
-        end
-    end
-    tips(m) = c;
-end
-tips = num2cell(transpose(tips));
-name   = num2cell(A(1:length(A),1));
-len = num2cell(A(1:length(A),3));
-rad = num2cell(A(1:length(A),4));
-parent = num2cell(A(1:length(A),6));
+children = temp;
 end
